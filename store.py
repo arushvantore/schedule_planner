@@ -121,6 +121,12 @@ def seed_sample(conn, today=None):
               completed_at=(today - timedelta(days=6)).isoformat(),
               next_review=(today - timedelta(days=4)).isoformat())
 
+    conn.execute(
+        "INSERT INTO exams (subject_id, name, exam_date) VALUES (?, ?, ?)",
+        (maths_id, "Maths 1 Midterm",
+         (today + timedelta(days=12)).isoformat()),
+    )
+
     conn.commit()
 
 
