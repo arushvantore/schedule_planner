@@ -16,19 +16,10 @@ Everything below is labeled honestly: **works today** vs **planned** vs **vision
 **Last updated:** 20 Oct 2026. Creator is away after exams; resume here.
 
 **Where exactly we stopped:**
-- Stage 1 (rewrite the brain) has begun.
-- **Step 1 is DONE (code written, smoke-tested, awaiting its test file):**
-  `store.py` exists — SQLite schema + sample seed. Verified manually: seeds
-  8 tokens / 2 subjects correctly. It is committed to the repo.
-- **Step 2 is NEXT:** create `test_engine.py` (must include the
-  "no minute columns ever" schema check), then create `capacity.py`
-  (the Low/Medium/High day classifier) and test it.
-- The old CLI (`planner.py`) still works and its 4 tests still pass.
-  The old CLI is kept alive untouched until Step 5 rewires it.
-
-**Do not:** add minute/duration columns, show per-topic times, install
-packages without approval, commit without approval, or skip running tests
-after every step. Full rules in §9 and §14.
+- **Stage 1 (rewrite the brain) is COMPLETE** — all steps done, all 17 tests pass.
+- The engine is built, tested, and running: `store.py` (SQLite, zero minutes) · `capacity.py` (Low/Medium/High) · `engine.py` (5-bucket priority, decay, exam−5, syllabus%) · `planner.py` (CLI v2, no minutes) · `report.py` + `daily.py` + `run_daily.sh` + launchd template.
+- **Next step: Stage 2** — FastAPI shell (Pydantic, with approval) + portal connector.
+- **Do not:** add minute/duration columns, show per-topic times, install packages without approval, commit without approval, or skip running tests after every step. Full rules in §9 and §14.
 
 ---
 
@@ -81,17 +72,18 @@ live your day.
 
 ---
 
-## 3. What works TODAY (verified 20 Oct 2026)
+## 3. What works TODAY (verified 20 Oct 2026 — Stage 1 COMPLETE)
 
 | Piece | State |
 |---|---|
-| **CLI v1** (`planner.py`) | ✅ menu · backlog by subject · mark studied · today's plan with reasons · saves to `progress.json` between runs |
-| **Tests v1** (`test_planner.py`) | ✅ 4/4 PASS (run `python3 test_planner.py`) |
-| **Starter topics** (`sample_data.py`) | ✅ 8 topics, 2 subjects (note: its deadlines are stale/past — replaced by relative dates in the new seed) |
-| **New memory layer** (`store.py`) | ✅ written & smoke-tested — SQLite schema (tokens, subjects, exams, schedule, materials, plan history) with **zero minute columns**; seeds 8 tokens with a prerequisite chain, one overdue token (Kinematics), one review-due token (Waves). ⏳ its `test_engine.py` not written yet (Step 2) |
+| **Memory layer** (`store.py`) | ✅ SQLite schema (tokens, subjects, exams, schedule, materials, plan history) with **zero minute columns**; seeds 8 tokens + 1 exam, with a prerequisite chain, one overdue token (Kinematics), one review-due token (Waves) |
+| **Capacity classifier** (`capacity.py`) | ✅ holiday → High; class load ≤1 High / ≤3 Medium / ≥4 Low; deadline pressure (≤2 days) downgrades one level. Serves 1 / 2 / 3 tokens |
+| **Planning engine** (`engine.py`) | ✅ 5-bucket order (carry-over with 3-day postponed flag → overdue → review-due → deadline-soon → backlog) · prerequisite gating · decay Easy+7d / Medium+5d / Hard+2d · exam−5 pace report · syllabus taught%/completed% |
+| **CLI v2** (`planner.py`) | ✅ today's plan (capacity + reasons + exam lines) · backlog · mark-done with Easy/Medium/Hard tap · refill · exams & syllabus view · writes `today.md` · persists to `data/planner.sqlite` — **no minutes anywhere** |
+| **Report & auto-run** (`report.py`, `daily.py`, `run_daily.sh`, `launchd/`) | ✅ `today.md` writer · daily runner (smoke-tested) · launchd 6:30 AM template (**not installed** — activate by hand per comments in the plist) |
+| **Test suites** | ✅ `test_engine.py` 12/12 PASS + `test_planner.py` 5/5 PASS = **17/17** |
 | **README** | ✅ this document |
-| Capacity classifier, planning engine, decay, CLI v2, `today.md`, auto-run | ❌ not started (Steps 2–7) |
-| FastAPI, extension, Slack, PDF, Codeforces feeds | ❌ not started (Stages 2–4) |
+| FastAPI shell, portal connector, extension, Slack, PDF, Codeforces feeds | ❌ not started (Stages 2–4) |
 
 ---
 
@@ -128,7 +120,7 @@ working from the last good data and says so honestly.
 
 ## 6. Engine spec (agreed design — implement exactly this)
 
-### 6.1 Day capacity classifier → `capacity.py` (Step 2)
+### 6.1 Day capacity classifier — ✅ implemented in `capacity.py`
 - Inputs from the `schedule` table for the weekday: rows of kind
   `class`, `transit`, or `holiday`; plus pending tokens with a deadline
   within 2 days ("deadline pressure").
@@ -140,7 +132,7 @@ working from the last good data and says so honestly.
     (High→Medium, Medium→Low, Low stays Low)
 - Serve counts: **Low = 1 token, Medium = 2, High = 3** (per day)
 
-### 6.2 Daily plan builder → `engine.py` (Step 3)
+### 6.2 Daily plan builder — ✅ implemented in `engine.py`
 - A token is **eligible** if: pending AND its prerequisite (single
   `prereq_id` chain) is completed; OR completed but due for review
   (difficulty set and `next_review` ≤ today).
@@ -160,23 +152,23 @@ working from the last good data and says so honestly.
 - **Refill:** each tap adds the next eligible unserved token (1 per tap,
   no artificial total limit — the student pulls, the system never pushes).
 
-### 6.3 Decay rule (asymmetric feedback)
+### 6.3 Decay rule (asymmetric feedback) — ✅ implemented in `engine.py`
 - Tap on completion: Easy / Medium / Hard.
 - `next_review = completed_at + 7 days` (Easy) / `+5` (Medium) / `+2` (Hard).
 - A due review token re-enters the serve buckets (see 6.2 bucket 3).
 
-### 6.4 Backward chain with exams (Step 4)
+### 6.4 Backward chain with exams — ✅ implemented in `engine.py` (`exam_report`)
 - Table `exams(subject_id, name, exam_date)`.
 - Target: all exam-relevant completed by **exam_date − 5 days**; revision
   passes scheduled inside that window using the decay rule. If the plan
   cannot fit (too many tokens vs days left), report honestly
   (`{subject}: behind for {exam}`) — never fake a green.
 
-### 6.5 Syllabus progress
+### 6.5 Syllabus progress — ✅ implemented in `engine.py` (`syllabus_progress`)
 - Per subject: taught % (tokens with any activity) and completed %
   (completed / total). Shown in dashboard and daily output.
 
-### 6.6 Output → `today.md` (Step 6)
+### 6.6 Output → `today.md` — ✅ implemented in `report.py`
 - Plain markdown, no durations anywhere: capacity level, numbered token
   list with reasons + attached materials, exam status line, refill hint.
 
@@ -226,8 +218,8 @@ Stage 2, with explicit approval.**
 
 | Stage | What | Unlocks | Status |
 |---|---|---|---|
-| **1** | **Rewrite the brain** — see sub-steps below | *It thinks correctly for me* | ⏳ IN PROGRESS |
-| **2** | FastAPI shell (Pydantic, with approval) + portal connector | *It has a body* | ❌ |
+| **1** | **Rewrite the brain** — see sub-steps below | *It thinks correctly for me* | ✅ COMPLETE (20 Oct 2026) |
+| **2** | FastAPI shell (Pydantic, with approval) + portal connector | *It has a body* | ❌ NEXT |
 | **3** | Browser extension — injects checklist, captures portal data locally, video-progress requeue | *It lives inside the portal* | ❌ |
 | **4** | Slack (Socket Mode) · PDF confirm flow · Codeforces (WA/TLE tokens) | *It listens to everything* | ❌ |
 | **5** | PWA screens (Today · Map · Progress · Add/Fix) + material library | *The sellable artifact* | ❌ |
@@ -237,30 +229,20 @@ Stage 2, with explicit approval.**
 **Gate before Stage 5+:** 3-of-10 rule — talk to 3–5 classmates first;
 feature requests go to an idea bank, not into code.
 
-### Stage 1 sub-steps (the current assignment)
+### Stage 1 sub-steps — ALL DONE ✅ (20 Oct 2026)
 
-- ✅ **Step 0** — baseline: run old tests, read old code (done 20 Oct: 4/4 PASS)
-- ✅ **Step 1** — `store.py`: schema + `init_db` + `seed_sample` (relative
-  deadlines; Maths chain Limits→Differentiation→Integration; Kinematics
-  overdue; Waves review-due) + `fetch_tokens` + `fetch_subject_names` +
-  `mark_completed` + `log_plan`. Smoke-tested by hand. **No minute columns.**
-- ⬜ **Step 2** — `test_engine.py`: schema-has-no-minutes check, seed
-  checks, capacity-classifier checks → then `capacity.py` implementing §6.1
-- ⬜ **Step 3** — `engine.py` implementing §6.2 + §6.3 (eligibility,
-  `build_plan` with reasons, `refill`, `complete_token` with decay) + tests
-- ⬜ **Step 4** — exams table + backward chain (§6.4) + syllabus % (§6.5) + tests
-- ⬜ **Step 5** — rewire `planner.py` (CLI v2): menu = today's plan (no
-  minutes) · mark done with Easy/Medium/Hard tap · refill · backlog ·
-  exams; persists to `data/planner.sqlite`; update/replace old tests;
-  keep every §8 rule
-- ⬜ **Step 6** — `today.md` generation + `run_daily.sh` + launchd daily
-  auto-run (macOS)
-- ⬜ **Step 7** — update §3 of this README to reflect reality + commit/push
-  (with approval)
+- ✅ **Step 0** — baseline: old tests 4/4 PASS, old code read
+- ✅ **Step 1** — `store.py`: schema + `init_db` + `seed_sample` + CRUD. **No minute columns.**
+- ✅ **Step 2** — `test_engine.py` (incl. the permanent "no minutes in schema" check) + `capacity.py` per §6.1
+- ✅ **Step 3** — `engine.py` per §6.2 + §6.3 (eligibility, `build_plan` with reasons, `refill`, `complete_token` with decay)
+- ✅ **Step 4** — exam−5 pace report (§6.4) + syllabus % (§6.5) + tests
+- ✅ **Step 5** — CLI v2 rewired (`planner.py`), old minutes-based v1 and `sample_data.py` retired, tests rewritten
+- ✅ **Step 6** — `today.md` (`report.py`) + `daily.py` + `run_daily.sh` + launchd template (not installed)
+- ✅ **Step 7** — README updated to reflect reality + committed & pushed
 
-**After each step:** run `python3 test_planner.py` AND
-`python3 test_engine.py` (once it exists). Both must be all-PASS before
-moving on. One step per approval; explain in plain words before editing.
+**Rule going forward:** after each step run `python3 test_planner.py` AND
+`python3 test_engine.py` — both must be all-PASS (17 checks) before moving
+on. One step per approval; explain in plain words before editing.
 
 ---
 
@@ -281,12 +263,17 @@ institution pays — that is the path.
 
 ```bash
 cd schedule_planner
-python3 planner.py        # menu: backlog · mark studied · plan · quit
-python3 test_planner.py   # expected: 4 × PASS
+python3 planner.py        # menu: today's plan · backlog · mark done · refill · exams · today.md · quit
+python3 daily.py          # writes today.md once (for launchd/cron/manual)
+python3 test_engine.py    # expected: 12 × PASS
+python3 test_planner.py   # expected: 5 × PASS
 ```
 
 Requirements: Python 3.11+, nothing else (stdlib only — SQLite via
-`sqlite3` is stdlib). First v1 run creates `progress.json` (gitignored).
+`sqlite3` is stdlib). First run creates `data/planner.sqlite` (gitignored)
+and seeds the sample data. `launchd/com.arush.planner.daily.plist` is a
+6:30 AM template — **not installed**; activate by hand per the comments
+inside it.
 
 ---
 
@@ -294,28 +281,47 @@ Requirements: Python 3.11+, nothing else (stdlib only — SQLite via
 
 ```
 schedule_planner/
-├── planner.py        # CLI v1 (still minutes-based — replaced in Step 5)
-├── sample_data.py    # v1 starter topics (stale deadlines — v2 seed in store.py is the future)
-├── test_planner.py   # 4 PASS/FAIL checks (v1)
-├── store.py          # NEW: Stage 1 Step 1 — SQLite schema + seed (see §9)
-├── progress.json     # v1 saved progress (gitignored)
+├── store.py          # SQLite schema + seed + CRUD (zero minute columns)
+├── capacity.py       # Low/Medium/High day classifier
+├── engine.py         # plan builder (5 buckets), decay, exam−5, syllabus %
+├── planner.py        # CLI v2 — menu over the engine (no minutes)
+├── report.py         # writes today.md (plain markdown, no durations)
+├── daily.py          # one-shot: seed db + write today.md (for launchd)
+├── run_daily.sh      # wrapper for daily.py
+├── test_engine.py    # 12 PASS/FAIL checks (schema, seed, capacity, engine)
+├── test_planner.py   # 5 PASS/FAIL checks (CLI v2 outputs)
+├── launchd/
+│   └── com.arush.planner.daily.plist   # 6:30 AM template — NOT installed
+├── data/             # planner.sqlite lives here (gitignored)
+├── today.md          # generated output (gitignored)
 ├── README.md         # this document (the handoff source of truth)
-├── .gitignore        # ignores __pycache__/ and progress.json
+├── .gitignore        # ignores __pycache__/, progress.json, .venv/, data/, today.md
 └── .venv/
 ```
 
-### `store.py` API (for the next AI)
+### Module APIs (for the next AI)
+
+**`store.py`**
 - `init_db(path)` → connection with schema applied (`:memory:` allowed)
-- `seed_sample(conn, today=None)` — idempotent; seeds 2 subjects,
-  8 tokens (3-completed state examples, prereq chain, relative deadlines)
-- `fetch_tokens(conn)` → list of dicts
-- `fetch_subject_names(conn)` → {id: name}
-- `mark_completed(conn, token_id, difficulty, completed_at, next_review)`
-- `log_plan(conn, day, token_id, capacity, reason)`
-- Tables: `subjects`, `tokens(id, subject_id, title, state, covered,
-  deadline, source, difficulty, priority, prereq_id, origin_date,
-  completed_at, next_review)`, `exams`, `schedule(day_name, kind, detail)`,
-  `materials`, `plan_history`
+- `seed_sample(conn, today=None)` — idempotent; 2 subjects, 8 tokens
+  (prereq chain, relative deadlines, one overdue, one review-due), 1 exam
+- `fetch_tokens(conn)` · `fetch_subject_names(conn)` · `mark_completed(conn, token_id, difficulty, completed_at, next_review)` · `log_plan(conn, day, token_id, capacity, reason)`
+- Tables: `subjects`, `tokens(id, subject_id, title, state, covered, deadline, source, difficulty, priority, prereq_id, origin_date, completed_at, next_review)`, `exams`, `schedule(day_name, kind, detail)`, `materials`, `plan_history`
+
+**`capacity.py`**
+- `classify_day(conn, today=None)` → `"low" | "medium" | "high"`
+- `SERVE_COUNT = {"low": 1, "medium": 2, "high": 3}` · `downgrade(level)`
+
+**`engine.py`**
+- `build_plan(conn, today=None)` → `{"capacity", "served", "items": [{"token", "reason"}]}`
+- `refill(conn, plan, today=None)` → next item or `None` (appends to `plan`)
+- `complete_token(conn, token_id, difficulty, today=None)` → sets state + `next_review` via decay
+- `decay_days(difficulty)` → 7 / 5 / 2 · `is_eligible(token, by_id, today)`
+- `exam_report(conn, today=None)` → honest pace lines (exam − 5 buffer)
+- `syllabus_progress(conn)` → `{subject_id: {"taught_pct", "completed_pct"}}`
+
+**`report.py`** — `write_today_md(conn, path="today.md", today=None)`
+**`planner.py`** — `open_db()`, `show_todays_plan`, `show_backlog`, `mark_done`, `do_refill`, `show_exams` (all accept `today=` for tests); `main()` menu
 
 ---
 
@@ -372,11 +378,13 @@ show exam −5 status line. Then say: "and here it is inside the portal" (Stage 
 
 ## 15. For AI assistants working on this repo
 
-Read §HANDOFF STATUS first, then §9 (current step), then §6 (engine spec),
-then §14 (locked decisions). Working style: **plan → plain-language
-explanation → approval → build → run tests after every step**
-(`python3 test_planner.py` and, once it exists, `python3 test_engine.py`).
-Never install packages without approval. Never show per-topic times. Never
-add features without approval. Never break existing tests. When finished
-with a step: report what changed, test results, and what's next — then stop
-and wait for the creator.
+Read §HANDOFF STATUS first, then §9 (current step), then §6 (engine spec —
+now **implemented** in `capacity.py` / `engine.py` / `report.py`), then
+§12 (module APIs), then §14 (locked decisions). Working style: **plan →
+plain-language explanation → approval → build → run tests after every step**
+(`python3 test_engine.py` = 12 checks AND `python3 test_planner.py` = 5
+checks — both must stay all-PASS). Never install packages without approval
+(Stage 2's FastAPI/Pydantic is the first install, and it needs explicit
+yes). Never show per-topic times. Never add features without approval.
+Never break existing tests. When finished with a step: report what changed,
+test results, and what's next — then stop and wait for the creator.
