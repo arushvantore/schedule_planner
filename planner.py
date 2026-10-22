@@ -1,158 +1,156 @@
-import json
-from datetime import date, timedelta
+import engine
+import report
+import store
 
-from sample_data import topics as starter_topics
-
-
-# Load saved progress, or create the progress file with the starter topics.
-def load_progress():
-    try:
-        progress_file = open("progress.json", "r")
-    except FileNotFoundError:
-        save_progress(starter_topics)
-        return starter_topics
-
-    with progress_file:
-        return json.load(progress_file)
+DB_PATH = "data/planner.sqlite"
 
 
-# Save the current topics so study progress is kept between program runs.
-def save_progress(topics):
-    progress_file = open("progress.json", "w")
-    with progress_file:
-        json.dump(topics, progress_file, indent=4)
+# Open the engine's memory, seeding the sample data the first time.
+def open_db():
+    conn = store.init_db(DB_PATH)
+    store.seed_sample(conn)
+    return conn
 
 
-# Show the college-covered topics that are still waiting to be studied.
-def show_backlog(topics):
-    subjects = []
-    for topic in topics:
-        if topic["subject"] not in subjects:
-            subjects.append(topic["subject"])
+# Show today's plan: capacity level, the served tokens with their reasons,
+# the honest exam status lines, and the refill hint. No durations, ever.
+def show_todays_plan(conn, today=None):
+    plan = engine.build_plan(conn, today)
+    names = store.fetch_subject_names(conn)
 
-    for subject in subjects:
-        print("\n" + subject + ":")
-        found_topic = False
-        for topic in topics:
-            if (
-                topic["subject"] == subject
-                and topic["covered_in_college"]
-                and not topic["studied"]
-            ):
-                print("- " + topic["name"] + " (" + str(topic["minutes_needed"]) + " minutes)")
-                found_topic = True
-        if not found_topic:
+    print("\nToday's plan — " + plan["capacity"] + " capacity day")
+    if not plan["items"]:
+        print("All clear — nothing pending right now.")
+    for index in range(len(plan["items"])):
+        item = plan["items"][index]
+        token = item["token"]
+        subject = names[token["subject_id"]]
+        print(str(index + 1) + ". " + token["title"] + " (" + subject + ")")
+        print("   why: " + item["reason"])
+
+    for line in engine.exam_report(conn, today):
+        print(line)
+    if plan["items"]:
+        print("Finished everything? Choose refill for the next topic.")
+
+
+# Show the college-covered topics still waiting, grouped by subject.
+def show_backlog(conn):
+    tokens = store.fetch_tokens(conn)
+    names = store.fetch_subject_names(conn)
+
+    for subject_id in sorted(names):
+        print("\n" + names[subject_id] + ":")
+        shown = False
+        for token in tokens:
+            if (token["subject_id"] == subject_id
+                    and token["covered"] == 1
+                    and token["state"] == "pending"):
+                print("- " + token["title"])
+                shown = True
+        if not shown:
             print("- No backlog topics")
 
 
-# Let the user choose a topic and save it as studied.
-def mark_topic_studied(topics):
-    available_topics = []
-    for topic in topics:
-        if topic["covered_in_college"] and not topic["studied"]:
-            available_topics.append(topic)
-
-    if not available_topics:
-        print("All topics are already marked as studied.")
+# Pick a pending topic and record how it felt: easy, medium, or hard.
+def mark_done(conn, today=None):
+    pending = [token for token in store.fetch_tokens(conn)
+               if token["state"] == "pending"]
+    if not pending:
+        print("Everything is already completed.")
         return
 
-    print("\nTopics not yet studied:")
-    for index in range(len(available_topics)):
-        topic = available_topics[index]
-        print(str(index + 1) + ") " + topic["subject"] + " - " + topic["name"])
+    print("\nPending topics:")
+    for index in range(len(pending)):
+        print(str(index + 1) + ") " + pending[index]["title"])
 
     choice = input("Enter the topic number, or press Enter to cancel: ")
     if choice == "":
         print("No changes made.")
         return
-
     if not choice.isdigit():
         print("Please enter a number from the list.")
         return
-
-    topic_number = int(choice)
-    if topic_number < 1 or topic_number > len(available_topics):
+    number = int(choice)
+    if number < 1 or number > len(pending):
         print("Please enter a number from the list.")
         return
 
-    selected_topic = available_topics[topic_number - 1]
-    selected_topic["studied"] = True
-    save_progress(topics)
-    print("Marked as studied: " + selected_topic["name"])
-
-
-# Build today's plan by adding near deadlines first, then backlog in file order.
-def show_todays_plan(topics):
-    today = date.today()
-    last_deadline_day = today + timedelta(days=2)
-    minutes_left = 180 - 30
-    planned_topics = []
-    plan_reasons = []
-
-    for topic in topics:
-        if topic["studied"]:
-            continue
-        if topic["deadline"] is not None:
-            deadline = date.fromisoformat(topic["deadline"])
-            if today <= deadline <= last_deadline_day:
-                if topic["minutes_needed"] <= minutes_left:
-                    planned_topics.append(topic)
-                    plan_reasons.append(
-                        "deadline in " + str((deadline - today).days) + " days"
-                    )
-                    minutes_left = minutes_left - topic["minutes_needed"]
-
-    for topic in topics:
-        if topic["studied"]:
-            continue
-        is_backlog = topic["covered_in_college"]
-        already_planned = topic in planned_topics
-        if is_backlog and not already_planned:
-            if topic["minutes_needed"] <= minutes_left:
-                planned_topics.append(topic)
-                plan_reasons.append("backlog from " + topic["subject"])
-                minutes_left = minutes_left - topic["minutes_needed"]
-
-    if not planned_topics:
-        print("No topics fit into today's study time.")
+    print("How did it feel? 1) Easy  2) Medium  3) Hard")
+    tap = input("Choose 1, 2, or 3: ")
+    taps = {"1": "easy", "2": "medium", "3": "hard"}
+    if tap not in taps:
+        print("Please choose 1, 2, or 3. Nothing was saved.")
         return
 
-    print("\nToday's plan (up to 150 minutes, with a 30-minute buffer):")
-    for index in range(len(planned_topics)):
-        topic = planned_topics[index]
-        print(
-            "- "
-            + topic["name"]
-            + " ("
-            + str(topic["minutes_needed"])
-            + " minutes) — "
-            + plan_reasons[index]
-        )
-    print("Study time left: " + str(minutes_left) + " minutes")
+    difficulty = taps[tap]
+    engine.complete_token(conn, pending[number - 1]["id"], difficulty, today)
+    print("Done: " + pending[number - 1]["title"]
+          + " — back for review in " + str(engine.decay_days(difficulty))
+          + " days.")
+
+
+# Serve one more topic beyond today's list, if anything is left.
+def do_refill(conn, today=None):
+    plan = engine.build_plan(conn, today)
+    item = engine.refill(conn, plan, today)
+    if item is None:
+        print("All clear — nothing left in the queue.")
+        return
+    names = store.fetch_subject_names(conn)
+    token = item["token"]
+    print("Next up: " + token["title"] + " (" + names[token["subject_id"]] + ")")
+    print("why: " + item["reason"])
+
+
+# Show syllabus progress and honest exam status lines.
+def show_exams(conn, today=None):
+    names = store.fetch_subject_names(conn)
+    progress = engine.syllabus_progress(conn)
+    for subject_id in sorted(progress):
+        stats = progress[subject_id]
+        print(names[subject_id] + ": taught " + str(stats["taught_pct"])
+              + "%, completed " + str(stats["completed_pct"]) + "%")
+
+    lines = engine.exam_report(conn, today)
+    if not lines:
+        print("No exams on the calendar yet.")
+    for line in lines:
+        print(line)
 
 
 # Keep showing the menu until the user chooses to quit.
 def main():
-    topics = load_progress()
+    conn = open_db()
     while True:
-        print("\nStudy Planner")
-        print("1) Show backlog for each subject")
-        print("2) Mark a topic as studied")
-        print("3) Show today's plan")
-        print("4) Quit")
+        print("\nSchedule Planner")
+        print("1) Show today's plan")
+        print("2) Show backlog for each subject")
+        print("3) Mark a topic done (with a tap)")
+        print("4) Refill — next topic")
+        print("5) Exams and syllabus progress")
+        print("6) Write today.md")
+        print("7) Quit")
         choice = input("Choose an option: ")
 
         if choice == "1":
-            show_backlog(topics)
+            show_todays_plan(conn)
         elif choice == "2":
-            mark_topic_studied(topics)
+            show_backlog(conn)
         elif choice == "3":
-            show_todays_plan(topics)
+            mark_done(conn)
         elif choice == "4":
+            do_refill(conn)
+        elif choice == "5":
+            show_exams(conn)
+        elif choice == "6":
+            path = report.write_today_md(conn)
+            print("Wrote " + path)
+        elif choice == "7":
             print("Good luck with your studies!")
             break
         else:
-            print("Please choose 1, 2, 3, or 4.")
+            print("Please choose a number from 1 to 7.")
 
 
 if __name__ == "__main__":

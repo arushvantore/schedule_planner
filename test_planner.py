@@ -2,109 +2,76 @@ from contextlib import redirect_stdout
 from datetime import date
 from io import StringIO
 
-from planner import show_backlog, show_todays_plan
-from sample_data import topics
+import planner
+import store
+from engine import complete_token
+
+TODAY = date(2026, 10, 20)
 
 
-# Check the starter list has two subjects with four correctly shaped topics each.
-def check_starter_data():
-    subjects = []
-    for topic in topics:
-        if topic["subject"] not in subjects:
-            subjects.append(topic["subject"])
-
-    if len(subjects) != 2:
-        return False
-
-    for subject in subjects:
-        subject_topics = []
-        for topic in topics:
-            if topic["subject"] == subject:
-                subject_topics.append(topic)
-        if len(subject_topics) != 4:
-            return False
-
-    required_fields = [
-        "subject",
-        "name",
-        "covered_in_college",
-        "studied",
-        "minutes_needed",
-        "deadline",
-    ]
-    for topic in topics:
-        for field in required_fields:
-            if field not in topic:
-                return False
-    return True
+# Fresh in-memory database with the sample data seeded for a fixed day.
+def fresh():
+    conn = store.init_db(":memory:")
+    store.seed_sample(conn, TODAY)
+    return conn
 
 
-# Check backlog output includes only college-covered topics that are not studied.
-def check_backlog():
+# The plan must show capacity, reasons, and never the word "minutes".
+def check_plan_has_no_minutes():
     output = StringIO()
     with redirect_stdout(output):
-        show_backlog(topics)
-
+        planner.show_todays_plan(fresh(), TODAY)
     result = output.getvalue()
-    return (
-        "Limits and continuity" in result
-        and "Differentiation" in result
-        and "Vectors" in result
-        and "Integration" not in result
-        and "Matrices" not in result
-    )
+    return ("capacity" in result
+            and "deadline passed on" in result
+            and "review due" in result
+            and "minutes" not in result.lower())
 
 
-# Check the plan puts a deadline topic before backlog and explains each reason.
-def check_todays_plan():
-    test_topics = [
-        {
-            "subject": "Maths 1",
-            "name": "Deadline topic",
-            "covered_in_college": False,
-            "studied": False,
-            "minutes_needed": 30,
-            "deadline": date.today().isoformat(),
-        },
-        {
-            "subject": "Applied Physics",
-            "name": "Backlog topic",
-            "covered_in_college": True,
-            "studied": False,
-            "minutes_needed": 40,
-            "deadline": None,
-        },
-    ]
+# The backlog lists college-covered pending topics only.
+def check_backlog_content():
     output = StringIO()
     with redirect_stdout(output):
-        show_todays_plan(test_topics)
-
+        planner.show_backlog(fresh())
     result = output.getvalue()
-    deadline_position = result.find("Deadline topic")
-    backlog_position = result.find("Backlog topic")
-    return (
-        deadline_position >= 0
-        and backlog_position > deadline_position
-        and "deadline in 0 days" in result
-        and "backlog from Applied Physics" in result
-    )
+    return ("Differentiation" in result
+            and "Vectors" in result
+            and "Integration" not in result
+            and "Matrices" not in result)
 
 
-# Check a studied topic with a current deadline does not appear in the plan.
-def check_studied_topics_are_excluded_from_plan():
-    studied_deadline_topic = {
-        "subject": "Maths 1",
-        "name": "Already studied deadline topic",
-        "covered_in_college": True,
-        "studied": True,
-        "minutes_needed": 30,
-        "deadline": date.today().isoformat(),
-    }
+# After completing the overdue token it disappears from the plan.
+def check_completed_token_leaves_plan():
+    conn = fresh()
+    kinematics = [token for token in store.fetch_tokens(conn)
+                  if token["title"] == "Kinematics"][0]
+    complete_token(conn, kinematics["id"], "hard", TODAY)
+
     output = StringIO()
     with redirect_stdout(output):
-        show_todays_plan([studied_deadline_topic])
+        planner.show_todays_plan(conn, TODAY)
+    return "deadline passed" not in output.getvalue()
 
-    return "Already studied deadline topic" not in output.getvalue()
+
+# Refill surfaces the soon-deadline topic with an honest countdown.
+def check_refill_output():
+    output = StringIO()
+    with redirect_stdout(output):
+        planner.do_refill(fresh(), TODAY)
+    result = output.getvalue()
+    return ("Limits and continuity" in result
+            and "deadline in 2 days" in result)
+
+
+# Exams view shows syllabus percentages and the exam status line.
+def check_exams_view():
+    output = StringIO()
+    with redirect_stdout(output):
+        planner.show_exams(fresh(), TODAY)
+    result = output.getvalue()
+    return ("taught 75%" in result
+            and "completed 25%" in result
+            and "Maths 1 Midterm in 12 days" in result)
 
 
 # Print a clear result so a beginner can see whether each check worked.
@@ -116,10 +83,8 @@ def print_result(name, passed):
 
 
 if __name__ == "__main__":
-    print_result("starter data", check_starter_data())
-    print_result("backlog display", check_backlog())
-    print_result("today's plan", check_todays_plan())
-    print_result(
-        "studied topics are excluded from plan",
-        check_studied_topics_are_excluded_from_plan(),
-    )
+    print_result("plan has no minutes", check_plan_has_no_minutes())
+    print_result("backlog content", check_backlog_content())
+    print_result("completed token leaves plan", check_completed_token_leaves_plan())
+    print_result("refill output", check_refill_output())
+    print_result("exams view", check_exams_view())

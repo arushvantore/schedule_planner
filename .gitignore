@@ -1,3 +1,5 @@
 __pycache__/
 progress.json
 .venv/
+data/
+today.md
