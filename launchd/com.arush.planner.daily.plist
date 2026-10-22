@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd template: writes today.md every morning at 6:30.
+  NOT installed automatically. To activate (your choice, by hand):
+
+  1. Replace REPLACE_WITH_REPO_PATH with the real path to this repo,
+     in BOTH spots below.
+  2. cp com.arush.planner.daily.plist ~/Library/LaunchAgents/
+  3. launchctl load ~/Library/LaunchAgents/com.arush.planner.daily.plist
+
+  To undo: launchctl unload ~/Library/LaunchAgents/com.arush.planner.daily.plist
+  and delete the file.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.arush.planner.daily</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>REPLACE_WITH_REPO_PATH/daily.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>REPLACE_WITH_REPO_PATH</string>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+</dict>
+</plist>
