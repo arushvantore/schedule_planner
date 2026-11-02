@@ -1,390 +1,177 @@
-# Schedule Planner — Autonomous Academic Execution Engine
+# Schedule Planner
 
-> **What to study today — decided for you. No planning. No time-tracking. No syllabus worry.**
-> You open it, see 2–3 topics, study at your own speed, tick them done, hit refill if you want more.
-> The engine handles everything else — so exam eve arrives with: *"I'm already prepared."*
+**Know what to study next. Let the planner keep track of the rest.**
 
-**Creator:** arush ([@arushvantore](https://github.com/arushvantore))
-**Repo:** https://github.com/arushvantore/schedule_planner
-**Status:** working CLI prototype + Stage 1 rewrite in progress.
-Everything below is labeled honestly: **works today** vs **planned** vs **vision**.
+Schedule Planner is a student-focused academic planner and study assistant. It tracks each student’s syllabus, semester exams, assignments, study progress, results, and weak topics. A student can ask what to do today, study from their course materials, and ask for more work or a lighter plan as needed.
 
----
+The goal is for students to arrive at exams prepared through steady, targeted work—without having to remember every syllabus topic, deadline, and revision date themselves.
 
-## ⏸️ HANDOFF STATUS (read this first if you are an AI continuing the project)
+Schedule Planner is intended for students with different schools, colleges, courses, subjects, and schedules. It is a separate product from Mentor Kit and must not depend on Mentor Kit or on one student’s personal setup.
 
-**Last updated:** 20 Oct 2026. Creator is away after exams; resume here.
+## What a student can do
 
-**Where exactly we stopped:**
-- **Stage 1 (rewrite the brain) is COMPLETE** — all steps done, all 17 tests pass.
-- The engine is built, tested, and running: `store.py` (SQLite, zero minutes) · `capacity.py` (Low/Medium/High) · `engine.py` (5-bucket priority, decay, exam−5, syllabus%) · `planner.py` (CLI v2, no minutes) · `report.py` + `daily.py` + `run_daily.sh` + launchd template.
-- **Next step: Stage 2** — FastAPI shell (Pydantic, with approval) + portal connector.
-- **Do not:** add minute/duration columns, show per-topic times, install packages without approval, commit without approval, or skip running tests after every step. Full rules in §9 and §14.
+A student can ask the platform questions such as:
 
----
+- “What should I work on today?”
+- “I finished those. Give me more.”
+- “Make today’s plan lighter.”
+- “What assignments are due next?”
+- “Which topics should I revise for my next exam?”
+- “Show me all the questions for this subject from my connected course sources.”
+- “Explain this part of the lecture.”
+- “I got this question wrong. Help me understand it and practise the topic.”
 
-## 1. What this project IS
+The assistant should answer questions about the student’s own courses and materials, explain why work is recommended, and link answers to their sources when possible.
 
-A self-hosted engine that takes the **entire cognitive load of academic
-planning away from the student**. The student never looks at a calendar,
-never counts minutes, never tracks a syllabus. Behind the scenes the system:
+## How the planner organizes study
 
-1. **Gathers** everything about the student's academic world (college
-   portal, timetable, class Slack, uploaded PDFs, Codeforces) and remembers
-   it — including *changes* (a professor moving a deadline is detected,
-   not just new entries)
-2. **Classifies** each day's capacity (Low / Medium / High) from real
-   constraints — lecture hours, bus timings, holidays, missed classes —
-   instead of ever tracking time
-3. **Serves** 2–3 conceptual topic *tokens* per day, in the right order,
-   with study materials attached — and a **refill button** when you finish
-4. **Plans backward** from every upcoming exam, finishing all covered
-   material by **exam − 5 days** (an invisible safety buffer), with spaced
-   revision passes whose intervals adapt to how easy/hard you found each
-   topic
-5. **Never forgets** — unfinished tokens roll into tomorrow automatically,
-   but a day is never buried under yesterday's failures
+For every subject, Schedule Planner tracks the syllabus, course material, assignments, exams, revision, and backlog. It distinguishes between:
 
-The promise is a **daily answer**, not a calendar: open → study → tick →
-live your day.
+- **Covered:** the student has encountered the topic in class or course material.
+- **Practised:** the student has attempted questions or exercises on it.
+- **Understood:** available evidence suggests the student can answer questions on it.
 
----
+A topic being listed in a syllabus or lecture does not, by itself, mean the student has learned it.
 
-## 2. Core philosophy (the rules the engine believes)
+The planner combines current syllabus work with assignments, upcoming exams, revision, weak topics, and older backlog. It should keep old gaps visible without letting them bury current work.
 
-- **Topics are tokens, not time-boxes.** The engine tracks state
-  (pending / completed), priority, and prerequisites — **never minutes,
-  never elapsed time.** Student-visible output contains no durations.
-- **Capacity, not schedules.** A day is Low (1 core token), Medium (2), or
-  High (3) — computed from immutable external facts (classes, transit,
-  active deadlines), not stopwatches.
-- **Show the ceiling, not the wall.** Only 2–3 targets appear at once.
-  Finish them → "Refill Queue" routes the next logical concept through the
-  dependency graph. Cognitive load stays capped.
-- **Backward chaining.** Exam on Day N → curriculum path must complete by
-  Day N − 5. The buffer is invisible and uncompromised.
-- **Qualitative memory.** Marking a token done asks one tap: **Easy /
-  Medium / Hard.** Easy → revisited 7+ days out. Medium → ~5 days.
-  Hard → back into the queue within 48 hours for a light pass.
-- **Binary honesty.** Tokens are pending or completed; unfinished work
-  rolls forward with an anti-overwhelm cap — a student who misses days
-  gets a *reachable* plan, never a guilt wall.
+When an exam is scheduled, the planner works backward from the date and aims to provide two revision passes plus a buffer before the exam. It uses syllabus progress, practice, and marks to recommend what to cover and revise. If an exam date changes or a student falls behind, it recalculates the plan and explains the change.
 
----
+Exam and contest results can help identify weak concepts. The planner can return those concepts to the practice queue, offer explanations and targeted questions, and use later attempts to check for improvement.
 
-## 3. What works TODAY (verified 20 Oct 2026 — Stage 1 COMPLETE)
+## Daily workload and flexibility
 
-| Piece | State |
+The planner considers the student’s college timetable, commitments, and the time or study capacity the student has available on different days. It should be able to plan a lighter or fuller day accordingly.
+
+Students can ask the planner to:
+
+- Give them more work after they finish the plan.
+- Make the plan lighter when they have less time or energy.
+- Focus on an upcoming exam, assignment, or weak topic.
+- Rebalance work after a missed day or a schedule change.
+- Add a commitment or pause work on a subject.
+
+The planner should keep the workload manageable, explain its recommendations, preserve exam revision where possible, and avoid guilt-based messages or streak pressure. Students can choose whether to receive reminders and adjust or pause them.
+
+## Academic sources
+
+Students should be able to start with manual setup or imports. Connections to outside sources are optional and can be added over time.
+
+| Source | Information it may provide |
 |---|---|
-| **Memory layer** (`store.py`) | ✅ SQLite schema (tokens, subjects, exams, schedule, materials, plan history) with **zero minute columns**; seeds 8 tokens + 1 exam, with a prerequisite chain, one overdue token (Kinematics), one review-due token (Waves) |
-| **Capacity classifier** (`capacity.py`) | ✅ holiday → High; class load ≤1 High / ≤3 Medium / ≥4 Low; deadline pressure (≤2 days) downgrades one level. Serves 1 / 2 / 3 tokens |
-| **Planning engine** (`engine.py`) | ✅ 5-bucket order (carry-over with 3-day postponed flag → overdue → review-due → deadline-soon → backlog) · prerequisite gating · decay Easy+7d / Medium+5d / Hard+2d · exam−5 pace report · syllabus taught%/completed% |
-| **CLI v2** (`planner.py`) | ✅ today's plan (capacity + reasons + exam lines) · backlog · mark-done with Easy/Medium/Hard tap · refill · exams & syllabus view · writes `today.md` · persists to `data/planner.sqlite` — **no minutes anywhere** |
-| **Report & auto-run** (`report.py`, `daily.py`, `run_daily.sh`, `launchd/`) | ✅ `today.md` writer · daily runner (smoke-tested) · launchd 6:30 AM template (**not installed** — activate by hand per comments in the plist) |
-| **Test suites** | ✅ `test_engine.py` 12/12 PASS + `test_planner.py` 5/5 PASS = **17/17** |
-| **README** | ✅ this document |
-| FastAPI shell, portal connector, extension, Slack, PDF, Codeforces feeds | ❌ not started (Stages 2–4) |
+| Newton School or another learning portal | Course content, syllabus, assignments, questions, and lecture videos |
+| College website | Semester exam calendar, notices, assignment information, and deadlines |
+| College Slack | Course questions, announcements, deadline changes, and shared study material |
+| College timetable | Classes and commitments that affect study availability on each day |
+| Exam and contest results | Marks and performance that can reveal topics needing more practice |
+| Student uploads | Syllabi, PDFs, question papers, timetables, and other study materials |
 
----
+The planner should support a student’s full semester schedule, including all available exams and assignment deadlines—not only the next exam.
 
-## 4. A day in the target product
+## Background syncing
 
-> **6:30 AM — one message:**
-> *Today (Medium capacity — bus at 5:30):*
-> *1. Implement Circular Queue in Python* 📎 *Lecture 14 recording*
-> *2. Circular Queue — practice sheet* 📎 *from Slack*
-> *3. Revise Vectors (Hard last time — second pass)*
-> *Maths exam in 12 days — on pace.*
+A background sync service should check connected sources about every two minutes where the source supports that frequency. It should detect new or changed course content, questions, exam dates, assignment details, and deadlines, then update the student’s plan.
 
-You study at your own speed. Tick done. All three gone? → tap **Refill** →
-next logical token appears (or "All clear — free choice"). No times, no
-minutes, no menus, no thinking.
+Use a supported API or event feed when available. Use page reading or scraping only when permitted by the source and the student’s authorized access. Actual update timing depends on the source’s integration and rate limits.
 
----
+The app should show:
 
-## 5. Data feeds (how it becomes omniscient)
+- When each source last synced.
+- Whether the connection is working or needs attention.
+- Which information changed and where it came from.
+- When information could not be checked or may be out of date.
 
-| Feed | Mechanism | Status |
-|---|---|---|
-| 🔌 **College portal** | Browser extension reads the portal in *your own logged-in browser* and sends data to the local engine — **zero credentials stored anywhere**; detects updates/deletions, not just new rows | Planned (Phase 1) |
-| 🎥 **Recorded lectures** | Extension watches video progress (`onplay`/`timeupdate`); a half-watched lecture's remainder is re-queued as a token | Planned |
-| 💬 **Slack** | Event listener via Slack **Socket Mode** (WebSockets — no public server needed) parses class channels for quiz / postponed / deadline-change signals; also receives posted assignments; daily plan flows back out | Planned |
-| 📄 **PDFs you upload** | Exam notices, timetables, worksheets → dates extracted → **shown to you for one confirm tap** → enters the engine (never a silent wrong date) | Planned |
-| 🏋️ **Codeforces** | Official User Status API — solved problems enter the re-solve queue; **WA/TLE submissions generate debug tokens** automatically | Planned |
-| 📅 **Timetable / bus / notices** | Static vectors loaded once (manually or from PDF); define the capacity classifier's inputs | Planned |
+If sources disagree or an extracted date is uncertain, ask the student to confirm it before relying on it.
 
-Each feed logs its own health. If the portal feed dies, the engine keeps
-working from the last good data and says so honestly.
+## Questions and PDF exports
 
----
+A student should be able to ask for **all matching questions they can access** for a chosen subject from their connected portal and college Slack. Schedule Planner should organize those questions into one downloadable PDF, with source references where available.
 
-## 6. Engine spec (agreed design — implement exactly this)
+The collection should be limited to material the student is authorized to access. Search results and exported PDFs must not include another student’s private data.
 
-### 6.1 Day capacity classifier — ✅ implemented in `capacity.py`
-- Inputs from the `schedule` table for the weekday: rows of kind
-  `class`, `transit`, or `holiday`; plus pending tokens with a deadline
-  within 2 days ("deadline pressure").
-- `load = (number of class rows) + (1 if any transit row)`
-- Rules, in order:
-  - `holiday` present → **High**
-  - else `load ≤ 1` → High · `load ≤ 3` → Medium · `load ≥ 4` → Low
-  - If any pending deadline ≤ today+2 exists → downgrade one level
-    (High→Medium, Medium→Low, Low stays Low)
-- Serve counts: **Low = 1 token, Medium = 2, High = 3** (per day)
+## Lecture videos and explanations
 
-### 6.2 Daily plan builder — ✅ implemented in `engine.py`
-- A token is **eligible** if: pending AND its prerequisite (single
-  `prereq_id` chain) is completed; OR completed but due for review
-  (difficulty set and `next_review` ≤ today).
-- Serve order — fill the day's slots from these buckets, first-come:
-  1. **Carry-over** — pending, `origin_date` < today (reason:
-     `carried over from {date}`; if ≥3 days postponed append
-     ` — {n} days postponed, do this first`)
-  2. **Overdue** — pending, deadline < today (reason: `deadline passed on {date}`)
-  3. **Review due** — completed tokens whose `next_review` ≤ today
-     (reason: `review due (was {difficulty} last time)`)
-  4. **Deadline soon** — pending, deadline ≤ today+3
-     (reason: `deadline in {n} days`)
-  5. **Backlog** — pending, covered by college, prerequisite done
-     (reason: `backlog from {subject}`)
-- Anti-overwhelm: carry-over is allowed to fill the whole day's capacity;
-  the day is never bigger than its capacity.
-- **Refill:** each tap adds the next eligible unserved token (1 per tap,
-  no artificial total limit — the student pulls, the system never pushes).
+Students should be able to watch supported lecture videos within the platform and ask for:
 
-### 6.3 Decay rule (asymmetric feedback) — ✅ implemented in `engine.py`
-- Tap on completion: Easy / Medium / Hard.
-- `next_review = completed_at + 7 days` (Easy) / `+5` (Medium) / `+2` (Hard).
-- A due review token re-enters the serve buckets (see 6.2 bucket 3).
+- An explanation of the lecture or a selected section.
+- A summary of key ideas.
+- Help understanding a specific timestamp or confusing concept.
+- Practice questions based on the lecture.
 
-### 6.4 Backward chain with exams — ✅ implemented in `engine.py` (`exam_report`)
-- Table `exams(subject_id, name, exam_date)`.
-- Target: all exam-relevant completed by **exam_date − 5 days**; revision
-  passes scheduled inside that window using the decay rule. If the plan
-  cannot fit (too many tokens vs days left), report honestly
-  (`{subject}: behind for {exam}`) — never fake a green.
+When possible, explanations should point to the relevant course material or video timestamp. The platform should make clear which source material was used.
 
-### 6.5 Syllabus progress — ✅ implemented in `engine.py` (`syllabus_progress`)
-- Per subject: taught % (tokens with any activity) and completed %
-  (completed / total). Shown in dashboard and daily output.
+## Privacy and student ownership
 
-### 6.6 Output → `today.md` — ✅ implemented in `report.py`
-- Plain markdown, no durations anywhere: capacity level, numbered token
-  list with reasons + attached materials, exam status line, refill hint.
+Each student’s information must remain private to that student.
 
----
+- Every request must be checked on the server to ensure the student can access only their own account, courses, messages, marks, schedule, and study history.
+- Student data must be isolated between accounts. One student’s information must never appear in another student’s plan, chat, search results, PDF, or reports.
+- Each student connects their own authorized sources and can see and disconnect those connections.
+- Students should be able to export or delete their data.
+- The planner should request only the source access needed for its features.
+- Portal passwords must not be stored by Schedule Planner.
+- College staff should not see an individual student’s private study history by default.
+- Any future college reporting must be clearly disclosed, appropriately aggregated, and governed by student consent and college policy.
 
-## 7. Architecture & two-phase delivery
+Data isolation and access controls must be in place before the product hosts information for multiple students.
 
-**Phase 1 (student-owned):**
-```
-[Browser extension] —reads→ your portal session (nothing stored)
-        │ sends data
-        ▼
-[Local engine: FastAPI + SQLite] —the brain, runs on your machine
-        │ serves
-        ▼
-[Checklist injected into the portal page] + [daily Slack message]
-```
+## AI usage
 
-**Phase 2 (institution-owned):** once student outcomes are proven, the
-same engine APIs plug into the college's official systems — portal link
-first, native integration later. Faculty get an aggregate-only dashboard
-(class syllabus %, who's behind) — the institution-facing product.
+The planner’s core scheduling, syllabus tracking, deadline tracking, progress updates, and study queues should work without an AI model for every action. AI is useful for tutoring, explanations, searching course materials, and answering student questions.
 
-Code layout (from Stage 2 on): `/core` (engine) · `/connectors`
-(portal, slack, pdf, codeforces) · `/models` (Pydantic schemas) · SQLite
-with strict integrity constraints. **FastAPI + Pydantic are added only at
-Stage 2, with explicit approval.**
+The student experience should feel open-ended, without an arbitrary small question allowance where possible. However, AI models and hosting have finite processing capacity and cost, so Schedule Planner cannot honestly promise literally unlimited AI use at no cost. Any practical usage limits should be fair, transparent, and separate from the planner’s basic organization features.
 
----
+## Product principles
 
-## 8. What this product promises (design rules)
+1. **The student asks what to do next.** The planner handles organizing the syllabus and deadlines.
+2. **Use the student’s actual academic information.** Keep source links and sync status visible.
+3. **Be clear about uncertainty.** Confirm uncertain dates and explain missing or stale information.
+4. **Track learning, not just coverage.** Use practice and results to find weak topics.
+5. **Keep plans adjustable.** Recalculate as availability, results, and deadlines change.
+6. **Keep students in control.** Connections, reminders, exports, and deletion should be understandable and adjustable.
+7. **Protect each student’s data.** Enforce account isolation on the server.
+8. **Work without integrations.** Manual setup and imports should provide a useful starting point.
+9. **Support phones and computers.** Build a responsive student-facing web app with chat, daily plan, progress, and study materials.
+10. **Build for extension.** Add new sources and learning features over time without rebuilding the planner’s core.
 
-1. **The daily answer first** — open it, see today's targets in 2 seconds
-2. **No time shown, ever** — no durations, no schedules, no stopwatches
-3. **Never guilt-trip** — missed days rebalance; carry-over can't bury a day
-4. **Always show why** — every token carries its reason
-5. **Never show a wrong number** — extracted dates need your confirm tap
-6. **Recall, don't re-read** — revision says "close the notes first"
-7. **Works offline** — the brain is local; notifications are a bonus
-8. **Privacy** — zero stored credentials · no ads · nothing sold ·
-   faculty sees aggregates only
-9. **Tests after every step** — no feature ships with a failing test
+## Current project status
 
----
+The repository currently contains a command-line prototype and the planning engine that forms the product’s foundation. The web app, student accounts, source syncing, PDF question collection, and lecture assistant remain planned work.
 
-## 9. Build order (with exact current position)
+Existing local changes should be preserved as development continues. New work should be added in reviewable stages, with current project instructions followed.
 
-| Stage | What | Unlocks | Status |
-|---|---|---|---|
-| **1** | **Rewrite the brain** — see sub-steps below | *It thinks correctly for me* | ✅ COMPLETE (20 Oct 2026) |
-| **2** | FastAPI shell (Pydantic, with approval) + portal connector | *It has a body* | ❌ NEXT |
-| **3** | Browser extension — injects checklist, captures portal data locally, video-progress requeue | *It lives inside the portal* | ❌ |
-| **4** | Slack (Socket Mode) · PDF confirm flow · Codeforces (WA/TLE tokens) | *It listens to everything* | ❌ |
-| **5** | PWA screens (Today · Map · Progress · Add/Fix) + material library | *The sellable artifact* | ❌ |
-| **6** | Faculty dashboard + consent/roles | *Walk into the faculty office* | ❌ |
-| **7** | College pilot → portal link → official feed → campus license | *The deal* | ❌ |
+## Roadmap
 
-**Gate before Stage 5+:** 3-of-10 rule — talk to 3–5 classmates first;
-feature requests go to an idea bank, not into code.
+### Stage 1 — Planning engine
 
-### Stage 1 sub-steps — ALL DONE ✅ (20 Oct 2026)
+Maintain the core planner for subjects, syllabus topics, assignments, exams, completion, revision, weak-topic practice, daily capacity, and backlog.
 
-- ✅ **Step 0** — baseline: old tests 4/4 PASS, old code read
-- ✅ **Step 1** — `store.py`: schema + `init_db` + `seed_sample` + CRUD. **No minute columns.**
-- ✅ **Step 2** — `test_engine.py` (incl. the permanent "no minutes in schema" check) + `capacity.py` per §6.1
-- ✅ **Step 3** — `engine.py` per §6.2 + §6.3 (eligibility, `build_plan` with reasons, `refill`, `complete_token` with decay)
-- ✅ **Step 4** — exam−5 pace report (§6.4) + syllabus % (§6.5) + tests
-- ✅ **Step 5** — CLI v2 rewired (`planner.py`), old minutes-based v1 and `sample_data.py` retired, tests rewritten
-- ✅ **Step 6** — `today.md` (`report.py`) + `daily.py` + `run_daily.sh` + launchd template (not installed)
-- ✅ **Step 7** — README updated to reflect reality + committed & pushed
+### Stage 2 — Generic setup and application interface
 
-**Rule going forward:** after each step run `python3 test_planner.py` AND
-`python3 test_engine.py` — both must be all-PASS (17 checks) before moving
-on. One step per approval; explain in plain words before editing.
+Let students set up their own subjects, syllabus, semester exam calendar, assignment deadlines, timetable, and daily availability. Add the API needed by the web app and future source connections.
 
----
+### Stage 3 — Student web app
 
-## 10. Market note (honest)
+Build a responsive app for phones and computers with a daily plan, progress views, semester calendar, assignments, materials, and a chat-style way to ask what to do or ask about course information.
 
-Students pay $4–20/month for weaker planners (StudyTracker $4/mo, Shovel
-$19.99/mo with LMS sync, StudyMap with SM-2); Indian exam apps (Kalnehi,
-IsotopeAI) exist but require manual entry. Spaced retrieval is proven
-strong (g≈0.74, Latimier 2020); uniform ≈ expanding intervals (g≈0.034).
-**The gap: nothing feeds itself from your own college's portal, and
-nothing is sold *to the college* as a student-success tool**
-(institutional precedent: EAB Starfish). Free for students, the
-institution pays — that is the path.
+### Stage 4 — Secure student identity and data separation
 
----
+Establish account access, data export and deletion, and server-side isolation so each student can access only their own information. Complete this foundation before offering a shared hosted service.
 
-## 11. Install & run (today)
+### Stage 5 — Source connections and background sync
 
-```bash
-cd schedule_planner
-python3 planner.py        # menu: today's plan · backlog · mark done · refill · exams · today.md · quit
-python3 daily.py          # writes today.md once (for launchd/cron/manual)
-python3 test_engine.py    # expected: 12 × PASS
-python3 test_planner.py   # expected: 5 × PASS
-```
+Add supported connections for Newton School, college websites, Slack, timetables, and student uploads. Implement background syncing, source health, change detection, and confirmation for uncertain information.
 
-Requirements: Python 3.11+, nothing else (stdlib only — SQLite via
-`sqlite3` is stdlib). First run creates `data/planner.sqlite` (gitignored)
-and seeds the sample data. `launchd/com.arush.planner.daily.plist` is a
-6:30 AM template — **not installed**; activate by hand per the comments
-inside it.
+### Stage 6 — Questions, PDFs, and lecture help
 
----
+Add subject-based question search across a student’s connected sources, combined PDF exports, in-platform video viewing, explanations, summaries, and practice based on course materials.
 
-## 12. Layout (today)
+### Stage 7 — Student pilot and college integration
 
-```
-schedule_planner/
-├── store.py          # SQLite schema + seed + CRUD (zero minute columns)
-├── capacity.py       # Low/Medium/High day classifier
-├── engine.py         # plan builder (5 buckets), decay, exam−5, syllabus %
-├── planner.py        # CLI v2 — menu over the engine (no minutes)
-├── report.py         # writes today.md (plain markdown, no durations)
-├── daily.py          # one-shot: seed db + write today.md (for launchd)
-├── run_daily.sh      # wrapper for daily.py
-├── test_engine.py    # 12 PASS/FAIL checks (schema, seed, capacity, engine)
-├── test_planner.py   # 5 PASS/FAIL checks (CLI v2 outputs)
-├── launchd/
-│   └── com.arush.planner.daily.plist   # 6:30 AM template — NOT installed
-├── data/             # planner.sqlite lives here (gitignored)
-├── today.md          # generated output (gitignored)
-├── README.md         # this document (the handoff source of truth)
-├── .gitignore        # ignores __pycache__/, progress.json, .venv/, data/, today.md
-└── .venv/
-```
+Pilot with students, measure whether plans are accurate and manageable, and improve the product based on feedback. Once the privacy and access model is ready, work with college IT teams to connect approved portal and campus systems.
 
-### Module APIs (for the next AI)
+## Long-term direction
 
-**`store.py`**
-- `init_db(path)` → connection with schema applied (`:memory:` allowed)
-- `seed_sample(conn, today=None)` — idempotent; 2 subjects, 8 tokens
-  (prereq chain, relative deadlines, one overdue, one review-due), 1 exam
-- `fetch_tokens(conn)` · `fetch_subject_names(conn)` · `mark_completed(conn, token_id, difficulty, completed_at, next_review)` · `log_plan(conn, day, token_id, capacity, reason)`
-- Tables: `subjects`, `tokens(id, subject_id, title, state, covered, deadline, source, difficulty, priority, prereq_id, origin_date, completed_at, next_review)`, `exams`, `schedule(day_name, kind, detail)`, `materials`, `plan_history`
+Schedule Planner begins as a tool students can set up for their own courses and schedules. It can grow to support more schools, colleges, learning platforms, and study features over time.
 
-**`capacity.py`**
-- `classify_day(conn, today=None)` → `"low" | "medium" | "high"`
-- `SERVE_COUNT = {"low": 1, "medium": 2, "high": 3}` · `downgrade(level)`
-
-**`engine.py`**
-- `build_plan(conn, today=None)` → `{"capacity", "served", "items": [{"token", "reason"}]}`
-- `refill(conn, plan, today=None)` → next item or `None` (appends to `plan`)
-- `complete_token(conn, token_id, difficulty, today=None)` → sets state + `next_review` via decay
-- `decay_days(difficulty)` → 7 / 5 / 2 · `is_eligible(token, by_id, today)`
-- `exam_report(conn, today=None)` → honest pace lines (exam − 5 buffer)
-- `syllabus_progress(conn)` → `{subject_id: {"taught_pct", "completed_pct"}}`
-
-**`report.py`** — `write_today_md(conn, path="today.md", today=None)`
-**`planner.py`** — `open_db()`, `show_todays_plan`, `show_backlog`, `mark_done`, `do_refill`, `show_exams` (all accept `today=` for tests); `main()` menu
-
----
-
-## 13. Pitch one-pager (for mentors / demo day)
-
-> "I built a study engine that thinks for me. It quietly watches everything
-> my college throws at me — portal, timetable, class Slack, PDFs, my
-> Codeforces submissions — and every morning hands me exactly 2–3 topics
-> to study, sized to what my day can actually hold, with revisions timed
-> so I never re-learn from scratch. I never open a calendar, never count
-> minutes, never check the syllabus. The plan is already done.
-> Every student I know does this planning by hand, badly, at 1 AM.
-> It's free for students; colleges pay for the class-level readiness
-> dashboard — the Starfish-style student-success tool they already budget for."
-
-Demo script (3 min): show `today.md` output → mark a token Hard → refill →
-show exam −5 status line. Then say: "and here it is inside the portal" (Stage 3).
-
----
-
-## 14. Locked decisions log (do not reverse without explicit approval)
-
-1. **No minutes/durations anywhere** — not in schema, not in output.
-   Capacity + token counts instead. (Killed in final merge; the v1 CLI's
-   internal 150-min budget is legacy, removed in Step 5.)
-2. **Brain before shell** — engine + tests first (Stage 1); FastAPI +
-   Pydantic only at Stage 2; browser extension only at Stage 3.
-3. **Single prerequisite chain per token** (`prereq_id`), not full DAG —
-   simple now; upgrade only if a real need appears.
-4. **Serve counts:** Low=1, Medium=2, High=3; refill adds 1 per tap.
-5. **Decay:** Easy +7d · Medium +5d · Hard +2d. Exam buffer: finish by
-   exam − 5 days.
-6. **PDF/portal-extracted dates always require a confirm tap** — never
-   silently trust an extraction.
-7. **Zero stored credentials** — extension uses the student's own logged-in
-   browser session; no state.json passwords anywhere.
-8. **No silent fallbacks** — a dead feed logs honestly and shows a health
-   badge; never fabricate data.
-9. **No guilt mechanics** — no streak-shaming, no wall of overdue tasks,
-   no gamification of any kind, no ads, no notifications beyond the one
-   daily plan message.
-10. **Faculty view = aggregates only** (class syllabus %, who's behind);
-    per-student data stays private until the student shares it.
-11. **std-lib only until Stage 2** (FastAPI/Pydantic need explicit approval
-    before install).
-12. **3-of-10 gate** before building Stage 5+ (talk to 3–5 classmates).
-13. **Never commit/push without creator's approval** — but a handoff save
-    requested by the creator counts as approval.
-14. **No per-topic clock times ever** in student-visible output.
-15. **Banned: fake precision and fake guarantees** — "readiness signal",
-    never "100% prepared guarantee".
-
----
-
-## 15. For AI assistants working on this repo
-
-Read §HANDOFF STATUS first, then §9 (current step), then §6 (engine spec —
-now **implemented** in `capacity.py` / `engine.py` / `report.py`), then
-§12 (module APIs), then §14 (locked decisions). Working style: **plan →
-plain-language explanation → approval → build → run tests after every step**
-(`python3 test_engine.py` = 12 checks AND `python3 test_planner.py` = 5
-checks — both must stay all-PASS). Never install packages without approval
-(Stage 2's FastAPI/Pydantic is the first install, and it needs explicit
-yes). Never show per-topic times. Never add features without approval.
-Never break existing tests. When finished with a step: report what changed,
-test results, and what's next — then stop and wait for the creator.
+The longer-term goal is to work with college IT teams to connect Schedule Planner to official college portals, so students can receive an up-to-date, personalized study plan while keeping control of their own academic information.
