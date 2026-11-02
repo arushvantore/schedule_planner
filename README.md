@@ -23,6 +23,10 @@ A student can ask the platform questions such as:
 
 The assistant should answer questions about the student’s own courses and materials, explain why work is recommended, and link answers to their sources when possible.
 
+### The intended student experience
+
+Students should not have to maintain their own syllabus, calendar, assignment list, or study schedule by hand. They connect or authorize their college portal, course portal, and Slack once. Schedule Planner then keeps the student’s academic information current, checks for changes, and prepares the next study plan. The student uses one chat box to ask what to study, ask for more or less, or ask a question about course material. The software handles source setup and planning behind the scenes; it should not send students through data-entry forms.
+
 ## How the planner organizes study
 
 For every subject, Schedule Planner tracks the syllabus, course material, assignments, exams, revision, and backlog. It distinguishes between:
@@ -55,7 +59,7 @@ The planner should keep the workload manageable, explain its recommendations, pr
 
 ## Academic sources
 
-Students should be able to start with manual setup or imports. Connections to outside sources are optional and can be added over time.
+The intended student workflow is to authorize academic sources once and let Schedule Planner keep information current. Source connections are being built in stages; the student interface should remain a single conversational entry point.
 
 | Source | Information it may provide |
 |---|---|
@@ -67,6 +71,12 @@ Students should be able to start with manual setup or imports. Connections to ou
 | Student uploads | Syllabi, PDFs, question papers, timetables, and other study materials |
 
 The planner should support a student’s full semester schedule, including all available exams and assignment deadlines—not only the next exam.
+
+### Pilot source observations
+
+For the first pilot, the student identified their Newton School course page as the academic portal and provided their class Slack workspace. The Newton dashboard exposes enrolled subject names, lectures, assignment and contest sections, upcoming task cards with deadlines, and a calendar of classes. A subject view also exposes lecture, assignment, quiz, and contest tabs plus practice progress. The pilot connector should collect those records and retain source links.
+
+The provided Slack workspace has a batch academic-announcements channel and subject-specific channels. Slack access should be limited to channels the student selects and is authorized to read; do not import private conversations or unrelated channels by default. Use Slack's official permissioned API or event delivery, and show the granted scopes and selected channels to the student. Do not rely on the assistant's own Slack connection as the product's integration credential.
 
 ## Background syncing
 
@@ -85,7 +95,7 @@ If sources disagree or an extracted date is uncertain, ask the student to confir
 
 ## Questions and PDF exports
 
-A student should be able to ask for **all matching questions they can access** for a chosen subject from their connected portal and college Slack. Schedule Planner should organize those questions into one downloadable PDF, with source references where available.
+A student should be able to ask for **all matching questions they can access** for a chosen subject from their connected portal and college Slack. Schedule Planner should organize generated materials in a subject → chapter structure. Chapter summaries, question sets, lecture notes, and practice files belong with their chapter; chapter names and source links should be retained. A combined subject PDF should have a clear section for each chapter, with source references where available. Do not make a flat, unstructured bundle when the sources identify chapters.
 
 The collection should be limited to material the student is authorized to access. Search results and exported PDFs must not include another student’s private data.
 
@@ -98,7 +108,7 @@ Students should be able to watch supported lecture videos within the platform an
 - Help understanding a specific timestamp or confusing concept.
 - Practice questions based on the lecture.
 
-When possible, explanations should point to the relevant course material or video timestamp. The platform should make clear which source material was used.
+When possible, explanations should point to the relevant course material or video timestamp. The platform should make clear which source material was used. Generated notes and practice files should be saved under the matching subject and chapter.
 
 ## Privacy and student ownership
 
@@ -130,13 +140,19 @@ The student experience should feel open-ended, without an arbitrary small questi
 5. **Keep plans adjustable.** Recalculate as availability, results, and deadlines change.
 6. **Keep students in control.** Connections, reminders, exports, and deletion should be understandable and adjustable.
 7. **Protect each student’s data.** Enforce account isolation on the server.
-8. **Work without integrations.** Manual setup and imports should provide a useful starting point.
+8. **Keep the student flow simple.** The student asks in one chat box; the software handles organization, source updates, and study planning behind the scenes.
 9. **Support phones and computers.** Build a responsive student-facing web app with chat, daily plan, progress, and study materials.
 10. **Build for extension.** Add new sources and learning features over time without rebuilding the planner’s core.
 
 ## Current project status
 
-The repository currently contains a command-line prototype and the planning engine that forms the product’s foundation. The web app, student accounts, source syncing, PDF question collection, and lecture assistant remain planned work.
+The repository contains the original command-line prototype and a first local web app backed by the same SQLite planning engine. The local app supports account creation/sign-in, per-account data files, session cookies, planner routes protected by authentication, and one chat-style student interface. Its first chat endpoint handles basic requests about today’s plan, assignments, exams, revision, more work, marking a named topic complete, and requesting a combined Python problem PDF. The PDF exporter groups synced question records by subject and chapter. A Newton HTML question-card scraper and source metadata for chapter/language are scaffolded. These pieces use explicit source data; no Newton School, college website, or Slack adapter is connected to a student account yet, and the current chat is not connected to a language model. Revision passes are targeted for 14 and 7 days before an exam, with the final five days reserved as a buffer.
+
+The local web prototype now has email/password accounts and a separate SQLite planner database for each account. Session tokens are random, stored as hashes, expire after 14 days, and are sent in HttpOnly, SameSite=Strict cookies. Planner API routes require a valid session; the database file is selected from the authenticated account record, never from a request parameter. The older `data/planner.sqlite` prototype database is left untouched and is not assigned to any account automatically.
+
+This is an early local prototype, not a production-ready hosted service. The Newton scraper currently parses explicitly marked Python question cards from authorized HTML pages; portal session authorization and account-specific source setup are not connected. Slack source import, automatic background syncing, question extraction from attachments, lecture viewing and tutoring, result-based weakness analysis, account recovery, email verification, and college portal integration remain future work. The PDF endpoint only includes question records already synced into the signed-in student's own database; it does not invent missing content. Keep it on the local machine; do not expose it to the public internet or use it for real multi-student hosting yet. For HTTPS hosting, set `PLANNER_COOKIE_SECURE=1`; production also needs account abuse protection, recovery flows, backups, operational monitoring, and reviewed deployment configuration.
+
+To run the local web app, install the dependencies in `requirements.txt` and run `python app.py` from the repository directory. The app listens on `127.0.0.1:8000`; account records and sessions are stored in `data/auth.sqlite`, and each account’s planner data is stored in `data/users/<account-id>.sqlite`.
 
 Existing local changes should be preserved as development continues. New work should be added in reviewable stages, with current project instructions followed.
 
@@ -144,19 +160,19 @@ Existing local changes should be preserved as development continues. New work sh
 
 ### Stage 1 — Planning engine
 
-Maintain the core planner for subjects, syllabus topics, assignments, exams, completion, revision, weak-topic practice, daily capacity, and backlog.
+The existing core planner handles subjects, syllabus topics, exams, completion feedback, spaced reviews, daily capacity, and backlog. Assignment tracking and two exam revision passes are now available in the local web app. Continue by improving planning around dated availability, multiple overlapping exams, marks, and weak-topic practice.
 
-### Stage 2 — Generic setup and application interface
+### Stage 2 — Automatic academic source setup
 
-Let students set up their own subjects, syllabus, semester exam calendar, assignment deadlines, timetable, and daily availability. Add the API needed by the web app and future source connections.
+Make source connection the primary setup: connect the college portal or website, Newton School, and course Slack; identify the signed-in student’s courses and academic calendar; and sync syllabus coverage, exams, assignments, timetable changes, questions, and course materials. Let students correct uncertain information conversationally. Add dated availability and import/export where sources cannot provide the information.
 
 ### Stage 3 — Student web app
 
-Build a responsive app for phones and computers with a daily plan, progress views, semester calendar, assignments, materials, and a chat-style way to ask what to do or ask about course information.
+The responsive local app now presents one chat box and handles a small set of planner requests. Connect the chat to the full academic data model, then add the language-model tutor and source-grounded answers while keeping data entry out of the student flow.
 
 ### Stage 4 — Secure student identity and data separation
 
-Establish account access, data export and deletion, and server-side isolation so each student can access only their own information. Complete this foundation before offering a shared hosted service.
+**Local foundation implemented:** account creation/sign-in, hashed password storage, hashed random session tokens with expiry/revocation, HttpOnly/SameSite cookies, origin checks on authentication changes, and one planner database per account. Account recovery, email verification, data export/deletion flows, abuse controls, and production hosting hardening remain before a shared hosted service.
 
 ### Stage 5 — Source connections and background sync
 
@@ -164,7 +180,7 @@ Add supported connections for Newton School, college websites, Slack, timetables
 
 ### Stage 6 — Questions, PDFs, and lecture help
 
-Add subject-based question search across a student’s connected sources, combined PDF exports, in-platform video viewing, explanations, summaries, and practice based on course materials.
+The chapter-grouped PDF renderer and authenticated download endpoint are scaffolded. Add account-authorized Slack and Newton source connections, extract questions from portal pages and supported attachments, and render/visually verify real chapter-wise exports. Add in-platform video viewing, explanations, summaries, and practice based on course materials.
 
 ### Stage 7 — Student pilot and college integration
 

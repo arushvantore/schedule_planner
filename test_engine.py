@@ -346,6 +346,25 @@ def check_syllabus_progress():
     return physics["taught_pct"] == 75 and physics["completed_pct"] == 25
 
 
+# Countdown wording reads like English: "1 day"/"1 topic", never "1 days".
+def check_singular_plural():
+    conn = fresh()
+    conn.execute("INSERT INTO subjects (name) VALUES ('Chemistry')")
+    subject_id = conn.execute("SELECT id FROM subjects").fetchone()[0]
+    add_token(conn, subject_id, "Atomic structure", covered=1)
+    conn.execute(
+        "INSERT INTO exams (subject_id, name, exam_date) VALUES (?, ?, ?)",
+        (subject_id, "Chemistry Final", (TODAY + timedelta(days=1)).isoformat()))
+    lines = exam_report(conn, TODAY)
+    if len(lines) != 1:
+        return False
+    line = lines[0]
+    return ("in 1 day:" in line
+            and "1 topic left" in line
+            and "1 days" not in line
+            and "1 topics" not in line)
+
+
 # Print a clear result so a beginner can see whether each check worked.
 def print_result(name, passed):
     if passed:
@@ -367,3 +386,4 @@ if __name__ == "__main__":
     print_result("soon reason via refill", check_soon_reason_via_refill())
     print_result("exam report", check_exam_report())
     print_result("syllabus progress", check_syllabus_progress())
+    print_result("singular plural", check_singular_plural())

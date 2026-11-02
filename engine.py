@@ -7,6 +7,15 @@ from store import fetch_subject_names, fetch_tokens, mark_completed
 REVIEW_DELAY = {"easy": 7, "medium": 5, "hard": 2}
 
 
+# Spoken English: "1 day", not "1 days" (the plan output shows these).
+def _days(count):
+    return str(count) + (" day" if count == 1 else " days")
+
+
+def _count(count, word):
+    return str(count) + " " + word + ("" if count == 1 else "s")
+
+
 # Days until review for a difficulty tap (default: medium pace).
 def decay_days(difficulty):
     return REVIEW_DELAY.get(difficulty, 5)
@@ -92,7 +101,7 @@ def _collect(conn, today, limit):
     take(overdue, lambda token: "deadline passed on " + token["deadline"])
     take(review, lambda token: "review due (was " + token["difficulty"] + " last time)")
     take(soon, lambda token: "deadline in "
-         + str((_parse(token["deadline"]) - today).days) + " days")
+         + _days((_parse(token["deadline"]) - today).days))
     take(backlog, lambda token: "backlog from " + names.get(token["subject_id"], "?"))
 
     return items
@@ -118,6 +127,7 @@ def refill(conn, plan, today=None):
     for item in items:
         if item["token"]["id"] not in served:
             plan["items"].append(item)
+            plan["served"] += 1
             return item
     return None
 
@@ -150,16 +160,16 @@ def exam_report(conn, today=None):
         elif not remaining:
             status = "all covered topics complete"
         elif days_to_buffer < 0:
-            status = ("behind — " + str(len(remaining))
-                      + " topics left and the buffer has passed")
+            status = ("behind — " + _count(len(remaining), "topic")
+                      + " left and the buffer has passed")
         elif len(remaining) <= days_to_buffer:
             status = "on pace"
         else:
-            status = ("behind — " + str(len(remaining)) + " topics with "
-                      + str(days_to_buffer) + " days to the buffer")
+            status = ("behind — " + _count(len(remaining), "topic")
+                      + " with " + _days(days_to_buffer) + " to the buffer")
 
-        lines.append(exam["name"] + " in " + str(days_left)
-                     + " days: " + status)
+        lines.append(exam["name"] + " in " + _days(days_left)
+                     + ": " + status)
     return lines
 
 
@@ -184,4 +194,53 @@ def syllabus_progress(conn):
             "taught_pct": round(taught * 100 / total),
             "completed_pct": round(completed * 100 / total),
         }
+    return result
+
+
+def revision_tasks(conn, today=None):
+    """Return unchecked revision passes in the pre-exam study window.
+
+    Passes are targeted for 14 and 7 days before the exam, leaving the final
+    five days as the revision buffer. If a student is late, missed passes stay
+    visible until that buffer begins.
+    """
+    if today is None:
+        today = date.today()
+    exams = conn.execute(
+        """SELECT e.id AS exam_id, e.name AS exam_name, e.exam_date,
+                  e.subject_id, s.name AS subject_name
+           FROM exams e JOIN subjects s ON s.id = e.subject_id
+           WHERE e.exam_date >= ? ORDER BY e.exam_date""",
+        (today.isoformat(),),
+    ).fetchall()
+    result = []
+    for row in exams:
+        exam = dict(row)
+        exam_date = _parse(exam["exam_date"])
+        tokens = conn.execute(
+            """SELECT t.id, t.title FROM tokens t
+               WHERE t.subject_id = ? AND t.covered = 1 ORDER BY t.id""",
+            (exam["subject_id"],),
+        ).fetchall()
+        for pass_number, days_before in ((1, 14), (2, 7)):
+            target = exam_date - timedelta(days=days_before)
+            buffer_start = exam_date - timedelta(days=5)
+            if today < target or today >= buffer_start:
+                continue
+            for token in tokens:
+                completed = conn.execute(
+                    """SELECT 1 FROM revision_checks
+                       WHERE exam_id = ? AND token_id = ? AND pass_number = ?""",
+                    (exam["exam_id"], token["id"], pass_number),
+                ).fetchone()
+                if completed is None:
+                    result.append({
+                        "exam_id": exam["exam_id"],
+                        "exam": exam["exam_name"],
+                        "subject": exam["subject_name"],
+                        "token_id": token["id"],
+                        "topic": token["title"],
+                        "pass_number": pass_number,
+                        "target_date": target.isoformat(),
+                    })
     return result

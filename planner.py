@@ -1,6 +1,7 @@
 import engine
 import report
 import store
+from datetime import date
 
 DB_PATH = "data/planner.sqlite"
 
@@ -119,6 +120,80 @@ def show_exams(conn, today=None):
         print(line)
 
 
+# --------------------- setup: your own syllabus --------------------------
+# Numbered subject picker shared by the topic and exam prompts.
+def choose_subject(conn):
+    names = store.fetch_subject_names(conn)
+    if not names:
+        print("No subjects yet — add one with option 8 first.")
+        return None
+    print("\nYour subjects:")
+    ids = sorted(names)
+    for index in range(len(ids)):
+        print(str(index + 1) + ") " + names[ids[index]])
+    choice = input("Pick a subject number: ")
+    if not choice.isdigit() or int(choice) < 1 or int(choice) > len(ids):
+        print("Please enter a number from the list.")
+        return None
+    return ids[int(choice) - 1]
+
+
+# 8) Add a subject (e.g. Maths 1, Applied Physics).
+def add_subject_flow(conn):
+    name = input("Subject name (e.g. Maths 1): ")
+    try:
+        store.add_subject(conn, name)
+        print("Added subject: " + name.strip())
+    except ValueError as err:
+        print("Not added — " + str(err) + ".")
+
+
+# 9) Add a topic to a subject. It goes straight into today's queue logic.
+def add_topic_flow(conn):
+    subject_id = choose_subject(conn)
+    if subject_id is None:
+        return
+    title = input("Topic title (e.g. Limits and continuity): ")
+    if not title.strip():
+        print("A topic needs a title. Nothing was saved.")
+        return
+
+    covered_answer = input(
+        "Has college covered it already? (y = yes, n = not yet, Enter = y): ")
+    covered = 0 if covered_answer.strip().lower() == "n" else 1
+
+    deadline_answer = input(
+        "Deadline YYYY-MM-DD, or press Enter to skip: ").strip()
+    deadline = None
+    if deadline_answer:
+        try:
+            deadline = date.fromisoformat(deadline_answer).isoformat()
+        except ValueError:
+            print("That date isn't YYYY-MM-DD. Nothing was saved.")
+            return
+
+    store.add_topic(conn, subject_id, title, covered=covered,
+                    deadline=deadline)
+    print("Added topic: " + title.strip())
+
+
+# 10) Add a named exam with its date — the engine plans backward from it.
+def add_exam_flow(conn):
+    subject_id = choose_subject(conn)
+    if subject_id is None:
+        return
+    name = input("Exam name (e.g. Maths 1 Midterm): ")
+    when = input("Date YYYY-MM-DD: ").strip()
+    try:
+        exam_date = date.fromisoformat(when)
+    except ValueError:
+        print("Please use the format YYYY-MM-DD. Nothing was saved.")
+        return
+    store.add_exam(conn, subject_id, name, exam_date)
+    print("Added: " + name.strip() + " on " + when
+          + " — today's plan counts down to it.")
+
+
 # Keep showing the menu until the user chooses to quit.
 def main():
     conn = open_db()
@@ -131,6 +206,9 @@ def main():
         print("5) Exams and syllabus progress")
         print("6) Write today.md")
         print("7) Quit")
+        print("8) Add a subject")
+        print("9) Add a topic")
+        print("10) Add an exam")
         choice = input("Choose an option: ")
 
         if choice == "1":
@@ -149,8 +227,14 @@ def main():
         elif choice == "7":
             print("Good luck with your studies!")
             break
+        elif choice == "8":
+            add_subject_flow(conn)
+        elif choice == "9":
+            add_topic_flow(conn)
+        elif choice == "10":
+            add_exam_flow(conn)
         else:
-            print("Please choose a number from 1 to 7.")
+            print("Please choose a number from 1 to 10.")
 
 
 if __name__ == "__main__":
